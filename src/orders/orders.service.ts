@@ -9,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { User } from '../users/entities/user.entity';
 import { Repository } from 'typeorm';
 import { Order } from './entities/order.entity';
+import { OrderDetails } from 'src/order_details/entities/order_detail.entity';
 
 @Injectable()
 export class OrdersService {
@@ -17,6 +18,8 @@ export class OrdersService {
     private readonly orderRepository: Repository<Order>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @InjectRepository(OrderDetails)
+    private readonly orderDetailsRepository: Repository<OrderDetails>,
   ) {}
 
   async create(createOrderDto: CreateOrderDto) {
@@ -40,6 +43,18 @@ export class OrdersService {
     } catch (error) {
       throw new ConflictException(error.message || 'Failed to create order');
     }
+  }
+
+  async updateOrderTotal(orderId: number) {
+    const orderDetails = await this.orderDetailsRepository.find({
+      where: { order_id: orderId },
+    });
+
+    const total = orderDetails.reduce((sum, item) => {
+      return sum + item.price_at_order * item.quantity;
+    }, 0);
+
+    await this.orderRepository.update(orderId, { total_amount: total });
   }
 
   async findAll(page: number = 1, limit: number = 8) {

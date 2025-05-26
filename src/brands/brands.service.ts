@@ -59,18 +59,26 @@ export class BrandsService {
   async update(id: number, updateBrandDto: UpdateBrandDto) {
     const brand = await this.findOne(id);
 
-    if (updateBrandDto.brand_name) {
-      const existingbrand = await this.brandRepository.findOne({
+    if (
+      updateBrandDto.brand_name &&
+      updateBrandDto.brand_name !== brand.brand_name
+    ) {
+      const existingBrand = await this.brandRepository.findOne({
         where: { brand_name: updateBrandDto.brand_name },
       });
 
-      if (existingbrand && existingbrand.brand_id !== id) {
+      if (existingBrand) {
         throw new ConflictException('Brand with this name already exists');
       }
     }
 
-    const updatedbrand = this.brandRepository.merge(brand, updateBrandDto);
-    return this.brandRepository.save(updatedbrand);
+    const toUpdate = {
+      ...brand,
+      ...updateBrandDto,
+    };
+
+    await this.brandRepository.update(id, toUpdate);
+    return this.brandRepository.findOneBy({ brand_id: id });
   }
 
   async remove(id: number) {

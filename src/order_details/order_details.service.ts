@@ -11,6 +11,7 @@ import { Order } from '../orders/entities/order.entity';
 import { Size } from '../sizes/entities/size.entity';
 import { Repository } from 'typeorm';
 import { OrderDetails } from './entities/order_detail.entity';
+import { OrdersService } from 'src/orders/orders.service';
 
 @Injectable()
 export class OrderDetailsService {
@@ -21,6 +22,7 @@ export class OrderDetailsService {
     private readonly orderRepository: Repository<Order>,
     @InjectRepository(Size)
     private readonly sizeRepository: Repository<Size>,
+    private readonly ordersService: OrdersService,
   ) {}
 
   async create(createOrderDetailsDto: CreateOrderDetailDto) {
@@ -61,7 +63,11 @@ export class OrderDetailsService {
       sizeEntity: size,
     });
 
-    return this.orderDetailsRepository.save(orderDetails);
+    const savedDetails = await this.orderDetailsRepository.save(orderDetails);
+
+    await this.ordersService.updateOrderTotal(createOrderDetailsDto.order_id);
+
+    return savedDetails;
   }
 
   async findAll(page: number = 1, limit: number = 8) {
@@ -119,7 +125,11 @@ export class OrderDetailsService {
       orderDetail.price_at_order = updateDto.price_at_order;
     }
 
-    return this.orderDetailsRepository.save(orderDetail);
+    const updatedDetail = await this.orderDetailsRepository.save(orderDetail);
+
+    await this.ordersService.updateOrderTotal(orderId);
+
+    return updatedDetail;
   }
 
   async remove(orderId: number, productId: number, size: string) {

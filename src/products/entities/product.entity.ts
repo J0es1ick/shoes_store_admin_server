@@ -11,7 +11,7 @@ import {
   Entity,
   JoinColumn,
 } from 'typeorm';
-import { Size } from 'src/sizes/entities/size.entity';
+import { Size } from '../../sizes/entities/size.entity';
 
 @Entity()
 export class Product {

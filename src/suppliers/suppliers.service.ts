@@ -42,6 +42,7 @@ export class SuppliersService {
       skip: (page - 1) * limit,
       take: limit,
       order: { supplier_id: 'DESC' },
+      relations: ['products'],
     });
 
     return {
@@ -55,7 +56,7 @@ export class SuppliersService {
   async findOne(id: number) {
     const supplier = await this.supplierRepository.findOne({
       where: { supplier_id: id },
-      relations: ['product'],
+      relations: ['products'],
     });
 
     if (!supplier) {
@@ -72,7 +73,10 @@ export class SuppliersService {
 
     const supplier = await this.findOne(id);
 
-    if (updateSupplierDto.email || updateSupplierDto.phone) {
+    if (
+      (updateSupplierDto.email && updateSupplierDto.email !== supplier.email) ||
+      (updateSupplierDto.phone && updateSupplierDto.phone !== supplier.phone)
+    ) {
       const existingSupplier = await this.supplierRepository.findOne({
         where: [
           { email: updateSupplierDto.email },
@@ -80,7 +84,10 @@ export class SuppliersService {
         ],
       });
 
-      if (existingSupplier && existingSupplier.supplier_id !== id) {
+      if (
+        existingSupplier &&
+        existingSupplier.supplier_id !== supplier.supplier_id
+      ) {
         throw new ConflictException(
           'Supplier with this email or phone already exists',
         );
