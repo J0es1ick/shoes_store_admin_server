@@ -72,7 +72,7 @@ export class ProductsService {
 
     const [products, total] = await this.productRepository.findAndCount({
       where,
-      relations: ['brand', 'category', 'supplier'],
+      relations: ['brand', 'category', 'supplier', 'sizes'],
       skip: (page - 1) * limit,
       take: limit,
       order: { product_id: 'DESC' },
@@ -89,7 +89,7 @@ export class ProductsService {
   async findOne(id: number) {
     const product = await this.productRepository.findOne({
       where: { product_id: id },
-      relations: ['brand', 'category', 'supplier'],
+      relations: ['brand', 'category', 'supplier', 'sizes'],
     });
 
     if (!product) {

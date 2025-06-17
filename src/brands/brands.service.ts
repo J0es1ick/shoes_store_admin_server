@@ -36,6 +36,7 @@ export class BrandsService {
       skip: (page - 1) * limit,
       take: limit,
       order: { brand_name: 'DESC' },
+      relations: ['products'],
     });
 
     return {
@@ -47,7 +48,10 @@ export class BrandsService {
   }
 
   async findOne(id: number) {
-    const brand = await this.brandRepository.findOneBy({ brand_id: id });
+    const brand = await this.brandRepository.findOne({
+      where: { brand_id: id },
+      relations: ['products'],
+    });
 
     if (!brand) {
       throw new NotFoundException(`Brand with ID ${id} not found`);

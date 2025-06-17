@@ -36,6 +36,7 @@ export class CategoriesService {
       skip: (page - 1) * limit,
       take: limit,
       order: { category_name: 'DESC' },
+      relations: ['products'],
     });
 
     return {
@@ -47,8 +48,9 @@ export class CategoriesService {
   }
 
   async findOne(id: number) {
-    const category = await this.categoryRepository.findOneBy({
-      category_id: id,
+    const category = await this.categoryRepository.findOne({
+      where: { category_id: id },
+      relations: ['products'],
     });
 
     if (!category) {
