@@ -1,1 +1,99 @@
+# STEP API
 
+Бэкенд пет-проекта [STEP](https://github.com/J0es1ick/shoes_store_client): вымышленный магазин обуви и одежды для экспериментов с интерфейсом и архитектурой. NestJS используется как HTTP-адаптер и контейнер зависимостей; бизнес-сценарии от него не зависят.
+
+**Node.js 22/24 · TypeScript · NestJS · PostgreSQL · Clean Architecture**
+
+## Локальный запуск без базы
+
+```sh
+npm ci
+npm run start:local
+```
+
+API: **http://127.0.0.1:5200/api/store**. Фронтенд запускается отдельно на `http://127.0.0.1:5180`; его dev-сервер проксирует запросы и сохраняет единый origin для cookie.
+
+Команда создаёт восемь демонстрационных товаров и сохраняет данные в `.local/store.json`. При первом запуске случайный пароль администратора записывается в `.local/admin-credentials.txt`. Файлы `.local` и `.env` игнорируются Git. Уже существующие пользователи и заказы сохраняются; seed не перезаписывает каталог.
+
+Полное автономное демо для GitHub Pages находится во фронтенде и не требует запуска этого API.
+
+## Docker: весь проект
+
+Положите репозитории рядом под именами `shoes_store_client` и `shoes_store_server` либо укажите путь к клиенту в `CLIENT_PATH`.
+
+```sh
+cp .env.docker.example .env.docker
+# Замените DB_PASSWORD и STORE_ADMIN_PASSWORD в .env.docker.
+docker compose --env-file .env.docker up --build -d
+```
+
+В PowerShell для копирования используйте `Copy-Item .env.docker.example .env.docker`. Если установка Windows предоставляет только отдельную команду, замените `docker compose` на `docker-compose`.
+
+Откройте **http://localhost:8080**. Все запросы проходят через Nginx фронтенда; API и база доступны только в сети Compose. При изменении порта или домена обновите `WEB_PORT` и `STORE_ORIGIN`.
+
+Стек последовательно ждёт готовности PostgreSQL, выполняет миграцию, запускает API и затем Nginx. API работает от пользователя `node`, production-образ содержит только runtime-зависимости. Использованы [health checks и порядок запуска Compose](https://docs.docker.com/compose/how-tos/startup-order/).
+
+```sh
+docker compose --env-file .env.docker logs -f api
+docker compose --env-file .env.docker down
+```
+
+Обычный `down` сохраняет данные в именованном volume. Для локального HTTP задан `STORE_COOKIE_SECURE=false`; при размещении за HTTPS установите `true` и точный `STORE_ORIGIN`. Домен, сертификат и внешний reverse proxy зависят от выбранного хостинга. После создания администратора можно убрать его пароль из окружения: существующий аккаунт не пересоздаётся.
+
+## Настройки
+
+| Переменная | Назначение |
+|---|---|
+| `STORE_STORAGE` | `file` только для разработки, `postgres` для развёртывания |
+| `STORE_DATA_FILE` | Путь к локальному JSON, по умолчанию `.local/store.json` |
+| `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` | Подключение PostgreSQL |
+| `STORE_HOST`, `STORE_PORT` | Адрес API, в контейнере `0.0.0.0:5200` |
+| `STORE_ORIGIN` | Разрешённый origin изменяющих запросов |
+| `STORE_COOKIE_SECURE` | Secure-флаг cookie; в production по умолчанию включён |
+| `STORE_SEED` | `true` добавляет демокаталог только в пустое хранилище |
+| `STORE_ADMIN_EMAIL`, `STORE_ADMIN_PASSWORD` | Создание нового администратора, пароль минимум 12 символов |
+
+Для запуска PostgreSQL без Compose скопируйте `.env.example`, заполните значения, выполните `npm run store:migrate`, `npm run build`, `npm run start:prod`. Runtime не изменяет схему автоматически.
+
+## API
+
+Все пути начинаются с `/api/store`:
+
+| Доступ | Методы |
+|---|---|
+| Публичный | `GET health`, `GET products`, `GET products/:id`, `POST auth/register`, `POST auth/login`, `POST auth/logout`, `GET auth/me` |
+| Пользователь | `PATCH profile`, `PATCH favorites/:id`, `GET orders`, `POST orders`, `POST orders/:id/cancel` |
+| Администратор | `GET admin`, `POST admin/products`, `PATCH admin/products/:id`, `DELETE admin/products/:id`, `PATCH admin/orders/:id` |
+
+Cookie `step_session` — HttpOnly, SameSite=Lax. DTO проверяют поля и отклоняют лишние свойства. Пароли хешируются через scrypt; в хранилище лежат хеши токенов сессий. Неаннотированные обработчики закрыты для обычных пользователей. Заказ проверяет наличие, считает цены по каталогу и поддерживает повтор запроса через `requestId`. Отмена возвращает остаток только один раз.
+
+## Архитектура
+
+```text
+src/
+  domain/           Модели, ошибки и правила заказов
+  application/      Сценарии auth/catalog/account/orders/admin и порты
+  infrastructure/   PostgreSQL, файл, криптография, конфигурация, seed
+  presentation/     HTTP-контроллер, DTO, guard, обработка ошибок
+  app/              Composition root: связывание интерфейсов и адаптеров
+  main.ts           Запуск HTTP-сервера
+```
+
+Подробности — в [ARCHITECTURE.md](ARCHITECTURE.md). Старые CRUD-модули заменены общей архитектурой. Публичный HTTP-контракт новой витрины сохранён; прежние маршруты `/api/products`, `/api/brands` и другие больше не регистрируются. Старые таблицы базы не удаляются.
+
+`npm run store:import-legacy` позволяет импортировать прежний каталог в виде скрытых черновиков. Он читает старые таблицы, не меняет исходные строки и не перезаписывает уже импортированные товары. Перед публикацией черновика нужны фотографии и актуальные остатки.
+
+## Проверки и CI
+
+```sh
+npm run check          # ESLint, границы слоёв, TypeScript, unit и HTTP-тесты
+npm run build
+```
+
+HTTP-тесты по умолчанию используют временное файловое хранилище. CI дополнительно создаёт отдельную PostgreSQL-базу, выполняет миграцию и запускает те же контракты через `npm run test:postgres`, затем собирает Docker-образ. Эта команда предназначена только для отдельной тестовой базы: её `DB_NAME` должен содержать `test`, начальное состояние очищается.
+
+CI проверяет runtime-зависимости через `npm audit --omit=dev --audit-level=high`. После совместимых обновлений на 2026-10-12 этот audit API не содержит замечаний. Полный audit инструментов разработки отдельно содержит upstream-замечания Jest и вспомогательных пакетов; production-образ их не включает.
+
+Тесты покрывают сессии, роли, валидацию, приватность заказов, параллельное оформление, отсутствие перепродажи остатков, откат транзакций, статусы и повторные запросы. `lint` ничего не исправляет сам; для исправлений есть `lint:fix`.
+
+Это учебный магазин: оплата при получении моделируется, онлайн-эквайринг, рассылки и службы доставки не подключены. Документация не предполагает готовность к реальным продажам.
