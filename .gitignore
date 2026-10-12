@@ -2,6 +2,7 @@
 /dist
 /node_modules
 /build
+/.local
 
 # Logs
 logs
@@ -57,3 +58,6 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # Migrations
 migrations
+
+.env.docker
+.env.ci

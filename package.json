@@ -1,30 +1,37 @@
 {
-  "name": "shoes-site",
+  "name": "shoes_store_server",
   "version": "0.0.1",
-  "description": "",
+  "description": "NestJS API for the STEP streetwear pet project",
   "author": "",
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
+    "start:local": "npm run build && node scripts/start-local.cjs",
+    "store:migrate": "node scripts/migrate-store.cjs",
+    "store:import-legacy": "node scripts/import-legacy.cjs",
+    "test:store": "jest --config ./test/jest-e2e.json --runInBand store.e2e-spec.ts",
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
-    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
-    "test": "jest",
+    "lint": "eslint src test --max-warnings 0",
+    "test": "jest --runInBand",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json --runInBand",
+    "lint:fix": "eslint src test --fix",
+    "typecheck": "tsc --noEmit",
+    "check:architecture": "node scripts/check-architecture.cjs",
+    "check": "npm run lint && npm run check:architecture && npm run typecheck && npm test && npm run test:e2e",
+    "test:postgres": "node scripts/test-postgres.cjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
     "@nestjs/core": "^11.0.1",
-    "@nestjs/mapped-types": "*",
     "@nestjs/platform-express": "^11.0.1",
-    "@nestjs/typeorm": "^11.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "dotenv": "^16.5.0",
@@ -76,5 +83,8 @@
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
+  },
+  "engines": {
+    "node": ">=22 <25"
   }
 }
