@@ -35,6 +35,13 @@ services:
         condition: service_healthy
   api:
     <<: *api
+    environment:
+      <<: *api-environment
+      STORE_TRUSTED_PROXIES: ${PROXY_NETWORK_PREFIX:-172.30.0}.2
+    networks:
+      default:
+      proxy:
+        ipv4_address: ${PROXY_NETWORK_PREFIX:-172.30.0}.3
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -46,5 +53,13 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    networks:
+      proxy:
+        ipv4_address: ${PROXY_NETWORK_PREFIX:-172.30.0}.2
+networks:
+  proxy:
+    ipam:
+      config:
+        - subnet: ${PROXY_NETWORK_PREFIX:-172.30.0}.0/24
 volumes:
   database:
