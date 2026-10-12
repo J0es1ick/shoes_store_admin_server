@@ -1,7 +1,8 @@
 import { AppError } from '../../domain/errors';
 import { OrderStatus, publicUser } from '../../domain/models';
 import { allowedStatuses, restoreStock } from '../../domain/orders';
-import { ProductInput } from '../inputs';
+import { requireProductVersion, validateStock } from '../../domain/products';
+import { ProductInput, StockInput } from '../inputs';
 import { Security } from '../ports/security';
 import { StoreRepository } from '../ports/store.repository';
 export class AdminService {
@@ -27,18 +28,6 @@ export class AdminService {
           'validation',
           'Фото должно быть HTTPS-ссылкой или файлом /media/.',
         );
-    if (
-      !Object.keys(input.stock).length ||
-      Object.keys(input.stock).length > 30 ||
-      Object.entries(input.stock).some(
-        ([size, qty]) =>
-          !/^[\w .-]{1,20}$/.test(size) ||
-          !Number.isInteger(qty) ||
-          qty < 0 ||
-          qty > 100000,
-      )
-    )
-      throw new AppError('validation', 'Проверьте размеры и остатки.');
     if (input.oldPrice && input.oldPrice <= input.price)
       throw new AppError(
         'validation',
@@ -47,10 +36,22 @@ export class AdminService {
     return this.repo.transaction((data) => {
       let product = id ? data.products.find((p) => p.id === id) : undefined;
       if (id && !product) throw new AppError('not_found', 'Товар не найден.');
-      if (product) Object.assign(product, input);
-      else {
+      const { expectedVersion, stock, ...details } = input;
+      if (product) {
+        requireProductVersion(product, expectedVersion);
+        if (stock !== undefined)
+          throw new AppError(
+            'validation',
+            'Остатки изменяются отдельно от описания товара.',
+          );
+        Object.assign(product, details);
+        product.version++;
+      } else {
+        validateStock(stock);
         product = {
-          ...input,
+          ...details,
+          stock,
+          version: 0,
           id: this.security.id(),
           createdAt: new Date().toISOString(),
         };
@@ -60,11 +61,24 @@ export class AdminService {
     });
   }
 
+  async updateStock(id: string, input: StockInput) {
+    validateStock(input.stock);
+    return this.repo.transaction((data) => {
+      const product = data.products.find((p) => p.id === id);
+      if (!product) throw new AppError('not_found', 'Товар не найден.');
+      requireProductVersion(product, input.expectedVersion);
+      product.stock = { ...input.stock };
+      product.version++;
+      return product;
+    });
+  }
+
   async archiveProduct(id: string) {
     return this.repo.transaction((data) => {
       const product = data.products.find((p) => p.id === id);
       if (!product) throw new AppError('not_found', 'Товар не найден.');
       product.active = false;
+      product.version++;
       return product;
     });
   }

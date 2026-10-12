@@ -16,8 +16,10 @@ export function restoreStock(
 ) {
   for (const item of items) {
     const product = data.products.find((p) => p.id === item.productId);
-    if (product)
+    if (product) {
       product.stock[item.size] =
         (product.stock[item.size] || 0) + item.quantity;
+      product.version++;
+    }
   }
 }

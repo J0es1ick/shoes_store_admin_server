@@ -1,9 +1,4 @@
-import {
-  Controller,
-  Get,
-  INestApplication,
-  ValidationPipe,
-} from '@nestjs/common';
+import { Controller, Get, INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -11,12 +6,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import request from 'supertest';
 import { AppModule } from '../src/app/app.module';
+import { configureHttp } from '../src/app/configure-http';
 import { StoreRepository } from '../src/application/ports/store.repository';
 import { environment } from '../src/infrastructure/config/environment';
 import { FileStoreRepository } from '../src/infrastructure/persistence/file-store.repository';
-import { emptyStore } from '../src/domain/models';
+import { emptyStore, StoreProduct } from '../src/domain/models';
 import { PostgresStoreRepository } from '../src/infrastructure/persistence/postgres-store.repository';
 import { seedProducts } from '../src/infrastructure/seed/catalog';
+
+const testedProduct = (products: StoreProduct[]) =>
+  products.find((product) => product.id === 'sage-runner')!;
 
 @Controller('legacy')
 class LegacyController {
@@ -65,14 +64,7 @@ describe('STEP storefront HTTP contracts', () => {
       });
     }
     app = module.createNestApplication();
-    app.setGlobalPrefix('api');
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
+    configureHttp(app, '');
     await app.init();
     repo = app.get(StoreRepository);
     customer = request.agent(app.getHttpServer());
@@ -115,7 +107,7 @@ describe('STEP storefront HTTP contracts', () => {
       .get('/api/store/products')
       .expect(200);
     expect(response.body).toHaveLength(8);
-    expect(response.body[0].stock['40']).toBe(8);
+    expect(testedProduct(response.body).stock['40']).toBe(8);
     expect(JSON.stringify(response.body)).not.toContain('password');
   });
   it('uses httpOnly sessions and never returns a password hash', async () => {
@@ -199,7 +191,7 @@ describe('STEP storefront HTTP contracts', () => {
     expect(response.body.total).toBe(9480);
     expect(response.body.deliveryCost).toBe(490);
     expect(response.body.status).toBe('new');
-    expect((await repo.read()).products[0].stock['40']).toBe(7);
+    expect(testedProduct((await repo.read()).products).stock['40']).toBe(7);
     await customer
       .post('/api/store/orders')
       .send(checkout({ total: 1 }))
@@ -236,7 +228,7 @@ describe('STEP storefront HTTP contracts', () => {
     expect((await customer.get('/api/store/orders')).body).toHaveLength(1);
     expect((await other.get('/api/store/orders')).body).toHaveLength(0);
     await other.post(`/api/store/orders/${first.body.id}/cancel`).expect(404);
-    expect((await repo.read()).products[0].stock['40']).toBe(7);
+    expect(testedProduct((await repo.read()).products).stock['40']).toBe(7);
   });
   it('validates sizes, quantities, address and performs atomic rollback', async () => {
     await customer
@@ -270,7 +262,8 @@ describe('STEP storefront HTTP contracts', () => {
         }),
       )
       .expect(409);
-    expect((await repo.read()).products[0].stock['40']).toBe(8);
+    expect(testedProduct((await repo.read()).products).stock['40']).toBe(8);
+    expect(testedProduct((await repo.read()).products).version).toBe(0);
     expect((await repo.read()).orders).toHaveLength(0);
   });
   it('does not oversell under concurrent checkout requests or duplicate cart lines', async () => {
@@ -285,7 +278,7 @@ describe('STEP storefront HTTP contracts', () => {
     );
     expect(responses.filter((r) => r.status === 201)).toHaveLength(2);
     expect(responses.filter((r) => r.status === 409)).toHaveLength(1);
-    expect((await repo.read()).products[0].stock['40']).toBe(2);
+    expect(testedProduct((await repo.read()).products).stock['40']).toBe(2);
     await customer
       .post('/api/store/orders')
       .send(
@@ -309,7 +302,7 @@ describe('STEP storefront HTTP contracts', () => {
     await customer
       .post(`/api/store/orders/${order.body.id}/cancel`)
       .expect(409);
-    expect((await repo.read()).products[0].stock['40']).toBe(8);
+    expect(testedProduct((await repo.read()).products).stock['40']).toBe(8);
     await admin
       .patch(`/api/store/admin/orders/${order.body.id}`)
       .send({ status: 'confirmed' })
@@ -320,7 +313,10 @@ describe('STEP storefront HTTP contracts', () => {
       .post('/api/store/orders')
       .send(checkout())
       .expect(201);
-    const { id, createdAt, ...input } = seedProducts()[0];
+    const { id, createdAt, version, stock, ...details } = testedProduct(
+      (await admin.get('/api/store/admin')).body.products,
+    );
+    const input = { ...details, expectedVersion: version };
     input.price = 9990;
     await customer
       .patch(`/api/store/admin/products/${id}`)
@@ -354,12 +350,127 @@ describe('STEP storefront HTTP contracts', () => {
       .send({ status: 'delivered' })
       .expect(200);
   });
+  it('rejects the original stale product form instead of restoring sold inventory', async () => {
+    const opened = testedProduct(
+      (await admin.get('/api/store/admin')).body.products,
+    );
+    const { id, createdAt, version, ...input } = opened;
+    await customer.post('/api/store/orders').send(checkout()).expect(201);
+    await admin
+      .patch(`/api/store/admin/products/${id}`)
+      .send({ ...input, name: 'Renamed after checkout' })
+      .expect(409);
+    expect(testedProduct((await repo.read()).products).stock['40']).toBe(7);
+    expect((await repo.read()).orders).toHaveLength(1);
+  });
+  it('checks product versions atomically and edits details separately from inventory', async () => {
+    const { id, createdAt, version, stock, ...details } = testedProduct(
+      (await admin.get('/api/store/admin')).body.products,
+    );
+    await customer.post('/api/store/orders').send(checkout()).expect(201);
+    await admin
+      .patch(`/api/store/admin/products/${id}`)
+      .send({ ...details, name: 'Stale name', expectedVersion: version })
+      .expect(409);
+    const current = testedProduct(
+      (await admin.get('/api/store/admin')).body.products,
+    );
+    expect(current.stock['40']).toBe(7);
+    expect(current.version).toBe(version + 1);
+    await admin
+      .patch(`/api/store/admin/products/${id}`)
+      .send({ ...details, stock, expectedVersion: current.version })
+      .expect(400);
+    const saved = await admin
+      .patch(`/api/store/admin/products/${id}`)
+      .send({
+        ...details,
+        name: 'Fresh name',
+        expectedVersion: current.version,
+      })
+      .expect(200);
+    expect(saved.body.stock['40']).toBe(7);
+    expect(saved.body.version).toBe(current.version + 1);
+    const stockInput = {
+      stock: { ...saved.body.stock, '40': 10 },
+      expectedVersion: saved.body.version,
+    };
+    await customer
+      .patch(`/api/store/admin/products/${id}/stock`)
+      .send(stockInput)
+      .expect(403);
+    const adjusted = await admin
+      .patch(`/api/store/admin/products/${id}/stock`)
+      .send(stockInput)
+      .expect(200);
+    expect(adjusted.body.stock['40']).toBe(10);
+    expect(adjusted.body.version).toBe(saved.body.version + 1);
+    await admin
+      .patch(`/api/store/admin/products/${id}/stock`)
+      .send(stockInput)
+      .expect(409);
+    await admin
+      .patch(`/api/store/admin/products/${id}/stock`)
+      .send({ stock, expectedVersion: null })
+      .expect(400);
+    expect(testedProduct((await repo.read()).products).stock['40']).toBe(10);
+  });
+  it('invalidates product forms on cancellation and archival even when inventory returns to its previous value', async () => {
+    const { id, createdAt, version, stock, ...details } = testedProduct(
+      (await admin.get('/api/store/admin')).body.products,
+    );
+    const order = await customer
+      .post('/api/store/orders')
+      .send(checkout())
+      .expect(201);
+    await customer
+      .post(`/api/store/orders/${order.body.id}/cancel`)
+      .expect(201);
+    await admin
+      .patch(`/api/store/admin/products/${id}`)
+      .send({ ...details, expectedVersion: version })
+      .expect(409);
+    const current = testedProduct(
+      (await admin.get('/api/store/admin')).body.products,
+    );
+    expect(current.stock).toEqual(stock);
+    expect(current.version).toBe(version + 2);
+    await admin.delete(`/api/store/admin/products/${id}`).expect(200);
+    await admin
+      .patch(`/api/store/admin/products/${id}`)
+      .send({ ...details, expectedVersion: current.version })
+      .expect(409);
+    expect(testedProduct((await repo.read()).products).active).toBe(false);
+  });
+  it('allows only one of two administrators to save the same product version', async () => {
+    const { id, createdAt, version, stock, ...details } = testedProduct(
+      (await admin.get('/api/store/admin')).body.products,
+    );
+    const results = await Promise.all(
+      ['First edit', 'Second edit'].map((name) =>
+        admin
+          .patch(`/api/store/admin/products/${id}`)
+          .send({ ...details, name, expectedVersion: version }),
+      ),
+    );
+    expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
+    expect(testedProduct((await repo.read()).products).stock).toEqual(stock);
+    expect(testedProduct((await repo.read()).products).version).toBe(
+      version + 1,
+    );
+  });
   it('persists data across repository restart', async () => {
+    await repo.transaction((data) => {
+      Reflect.deleteProperty(testedProduct(data.products), 'version');
+    });
     const secondRepository =
       process.env.TEST_POSTGRES === 'true'
         ? new PostgresStoreRepository(environment().database)
         : new FileStoreRepository(process.env.STORE_DATA_FILE!);
     await secondRepository.onModuleInit();
+    expect(
+      testedProduct((await secondRepository.read()).products).version,
+    ).toBe(0);
     expect((await secondRepository.read()).users.length).toBeGreaterThanOrEqual(
       3,
     );

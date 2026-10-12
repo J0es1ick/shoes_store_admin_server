@@ -83,7 +83,16 @@ export class ProductDto {
   @IsString({ each: true })
   @MaxLength(1000, { each: true })
   images: string[];
-  @IsObject() stock: Record<string, number>;
+  @IsOptional() @IsObject() stock?: Record<string, number>;
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(Number.MAX_SAFE_INTEGER)
+  expectedVersion?: number;
   @IsString() @MaxLength(30) badge: string;
   @IsBoolean() active: boolean;
+}
+export class StockDto {
+  @IsObject() stock: Record<string, number>;
+  @IsInt() @Min(0) @Max(Number.MAX_SAFE_INTEGER) expectedVersion: number;
 }

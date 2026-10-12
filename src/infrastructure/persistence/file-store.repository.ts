@@ -17,6 +17,7 @@ export class FileStoreRepository extends StoreRepository {
   private async open() {
     try {
       this.data = JSON.parse(await readFile(this.filename, 'utf8'));
+      for (const product of this.data.products) product.version ??= 0;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }

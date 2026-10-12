@@ -25,6 +25,7 @@ import {
   ProfileDto,
   RegisterDto,
   StatusDto,
+  StockDto,
 } from './dto';
 
 @Controller('store')
@@ -139,6 +140,12 @@ export class ShopController {
     @Param('id') id: string,
   ) {
     return this.adminService.archiveProduct(id);
+  }
+  @Patch('admin/products/:id/stock') @Access('admin') stock(
+    @Param('id') id: string,
+    @Body() body: StockDto,
+  ) {
+    return this.adminService.updateStock(id, body);
   }
   @Patch('admin/orders/:id') @Access('admin') status(
     @Param('id') id: string,

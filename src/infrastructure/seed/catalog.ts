@@ -135,6 +135,7 @@ export function seedProducts(): StoreProduct[] {
   ];
   return products.map((p, index) => ({
     ...p,
+    version: 0,
     active: true,
     createdAt: new Date(Date.UTC(2026, 9, 10 - index)).toISOString(),
     stock: Object.fromEntries(

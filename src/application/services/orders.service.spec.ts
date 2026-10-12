@@ -40,6 +40,7 @@ beforeEach(() => {
   repo.data.products = [
     {
       id: 'one',
+      version: 0,
       name: 'Tee',
       brand: 'STEP',
       category: 'clothing',

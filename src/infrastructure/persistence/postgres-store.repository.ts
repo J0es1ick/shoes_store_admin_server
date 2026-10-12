@@ -40,6 +40,7 @@ export class PostgresStoreRepository extends StoreRepository {
   ): StoreData {
     const data = emptyStore();
     for (const row of rows) (data[row.kind] as unknown[]).push(row.payload);
+    for (const product of data.products) product.version ??= 0;
     return data;
   }
   async read() {

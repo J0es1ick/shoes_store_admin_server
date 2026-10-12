@@ -2,6 +2,7 @@ export type Role = 'customer' | 'admin';
 export type Category = 'sneakers' | 'shoes' | 'clothing' | 'accessories';
 export interface StoreProduct {
   id: string;
+  version: number;
   name: string;
   brand: string;
   category: Category;

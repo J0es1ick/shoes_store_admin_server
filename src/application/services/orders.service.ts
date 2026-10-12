@@ -56,6 +56,7 @@ export class OrdersService {
             `«${product.name}», размер ${line.size}: недостаточно товара. Измените количество.`,
           );
         product.stock[line.size] -= line.quantity;
+        product.version++;
         return {
           productId: product.id,
           name: product.name,
