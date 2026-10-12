@@ -1,0 +1,8 @@
+node_modules
+dist
+coverage
+.local
+.git
+.env*
+!.env.example
+!.env.docker.example

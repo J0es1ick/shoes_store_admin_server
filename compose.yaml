@@ -1,0 +1,50 @@
+name: step
+x-api: &api
+  build: .
+  environment: &api-environment
+    DB_HOST: db
+    DB_PORT: 5432
+    DB_USER: ${DB_USER:-step}
+    DB_NAME: ${DB_NAME:-step}
+    DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env.docker}
+    STORE_STORAGE: postgres
+    STORE_SEED: ${STORE_SEED:-true}
+    STORE_ORIGIN: ${STORE_ORIGIN:-http://localhost:8080}
+    STORE_COOKIE_SECURE: ${STORE_COOKIE_SECURE:-false}
+    STORE_ADMIN_EMAIL: ${STORE_ADMIN_EMAIL:-}
+    STORE_ADMIN_PASSWORD: ${STORE_ADMIN_PASSWORD:-}
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:-step}
+      POSTGRES_DB: ${DB_NAME:-step}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env.docker}
+    volumes:
+      - database:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  migrate:
+    <<: *api
+    command: [node, scripts/migrate-store.cjs]
+    depends_on:
+      db:
+        condition: service_healthy
+  api:
+    <<: *api
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+  web:
+    build:
+      context: ${CLIENT_PATH:-../shoes_store_client}
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+volumes:
+  database:
